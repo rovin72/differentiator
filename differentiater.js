@@ -1,6 +1,7 @@
 const userInput=document.getElementById("userInput");
 const button=document.getElementById("Confirm");
 const num = (value) => ({kind: "num", value: value});
+const constant = (value) => ({kind: "constant", value: value});
 const vari = (value) => ({kind: "var", value: value});
 const op = (value) => ({kind: "op", value: value});
 const add = (left, right) => ({kind: "add", left: left, right: right});
@@ -16,12 +17,14 @@ function main() {
     const userMath=parseText(userText);
     const derivative=derive(userMath);
     console.log(derivative);
+    const simplified=simplify(derivative);
+    console.log(simplified);
+
 
 }
 
 function tokenise(text){
     text=text.replace(/\s+/g,"");
-    const digitBreak=["+","-","*","/","(",")"];
     const operations=["+","-","*","/","^"];
     const tokens = [];
     let pos=0;
@@ -41,11 +44,8 @@ function tokenise(text){
             numStr=text.slice(pos).match(digitRegex)[0];
         }
         if (numStr!==""){
-            if (numStr==="pi"){
-                tokens.push(num(Math.PI));
-            }
-            else if (numStr==="e"){
-                tokens.push(num(Math.E));
+            if (numStr==="pi"||numStr==="e"){
+                tokens.push(constant(numStr));
             }
             else {
                 tokens.push(num(parseFloat(numStr)));
@@ -110,7 +110,7 @@ class TokenParser {
 
     startsOp(){
         const currentToken=this.peek();
-        if(currentToken && (currentToken.kind==="num"|| currentToken.kind==="var"||currentToken.kind==="lparen"||currentToken.kind==="function")){
+        if(currentToken && (currentToken.kind==="num"|| currentToken.kind==="var"||currentToken.kind==="lparen"||currentToken.kind==="function"||currentToken.kind==="constant")){
             return true;
         }
         return false;
@@ -159,7 +159,7 @@ class TokenParser {
 
     parseFactor(){
         const shiftTok=this.advance();
-        if (shiftTok.kind==="num" || shiftTok.kind==="var"){
+        if (shiftTok.kind==="num" || shiftTok.kind==="var" || shiftTok.kind==="constant"){
             return shiftTok;
         }
         else if (shiftTok.kind==="function"){
@@ -203,6 +203,7 @@ function parseText(text){
 
 function dependsOn(node, v){
     switch (node.kind) {
+        case "constant":
         case "num": return false;
         case "var": return node.value===v;
         case "negate":
@@ -218,6 +219,8 @@ function derive(tree, differentiatingVar="x"){
     const derivative=tree;
     switch (derivative.kind) {
         case "num":
+            return num(0);
+        case "constant":
             return num(0);
         case "var":
             return num(derivative.value===differentiatingVar ? 1 : 0);
@@ -291,5 +294,271 @@ function derive(tree, differentiatingVar="x"){
     }
 }
 
+function isSame(expression1, expression2){
+    if (expression1.kind===expression2.kind){
+        switch (expression1.kind) {
+            case "num":
+            case "var":
+            case "constant":
+                return expression1.value===expression2.value;
+            case "negate":
+                return isSame(expression1.arg,expression2.arg);
+            case "function":
+                if (expression1.name===expression2.name){
+                    return isSame(expression1.arg,expression2.arg);
+                }
+                else{
+                    return false;
+                }
+            case "add":
+            case "subtract":
+            case "multiply":
+            case "divide":
+            case "exponent":
+                return (isSame(expression1.left,expression2.left) && isSame(expression1.right, expression2.right));
+            default:
+                return false;
+        }
+    }
+    else {
+        return false;
+    }
+}
+
+function simplify(derivative){
+    switch (derivative.kind){
+        case "num":
+        case "constant":
+        case "var":
+            return derivative;
+        case "function": {
+            const arg = simplify(derivative.arg);
+            switch (derivative.name) {
+                case "sin":
+                    if (arg.kind==="num"){
+                        if (arg.value===0){
+                            return num(0)
+                        }
+                    } else if (arg.kind==="constant"){
+                        if (arg.value==="pi"){
+                            return num(0)
+                        }
+                    }
+                    return func("sin", arg);
+                case "cos":
+                    if (arg.kind==="num"){
+                        if (arg.value===0){
+                            return num(1)
+                        }
+                    } else if (arg.kind==="constant"){
+                        if (arg.value==="pi"){
+                            return num(-1)
+                        }
+                    }
+                    return func("cos",arg);
+                case "tan": //tan is its own case incase special angles get added in the future
+                    if (arg.kind==="num"){
+                        if (arg.value===0){
+                            return num(0)
+                        }
+                    } else if (arg.kind==="constant"){
+                        if (arg.value==="pi"){
+                            return num(0)
+                        }
+                    }
+                    return func("tan",arg);
+                case "sec":
+                    if (arg.kind==="num"){
+                        if (arg.value===0){
+                            return num(1)
+                        }
+                    } else if (arg.kind==="constant"){
+                        if (arg.value==="pi"){
+                            return num(-1)
+                        }
+                    }
+                    return func("sec",arg);
+                case "ln":
+                    if (arg.kind==="num"){
+                        if (arg.value===1){
+                            return num(0)
+                        }
+                    }
+                    else if (arg.kind==="constant"){
+                        if (arg.value==="e"){
+                            return num(1)
+                        }
+                    }
+                    return func("ln",simplify(arg));
+                case "log":
+                    if (arg.kind==="num"){
+                        if (arg.value===1){
+                            return num(0)
+                        }
+                    }
+                    return func("log",simplify(arg));
+                case "sqrt":
+                    if (arg.kind==="num"){
+                        if (Number.isInteger(Math.sqrt(arg.value))){
+                            return num(Math.sqrt(arg.value));
+                        }
+                    }
+                    return func("sqrt",arg);
+                default:
+                    return func(derivative.name,arg);
+            }
+        }
+        case "add": {
+            const left = simplify(derivative.left);
+            const right = simplify(derivative.right);
+            if (left.kind==="num" && right.kind==="num"){
+                return num(left.value+right.value);
+            }
+            else if (left.kind==="num"){
+                if (left.value===0){
+                    return right;
+                }
+            } 
+            else if (right.kind==="num"){
+                if (right.value===0){
+                    return left;
+                }
+            }
+            return add(left, right);
+        }
+        case "subtract": {
+            const left = simplify(derivative.left);
+            const right = simplify(derivative.right);
+            if (left.kind==="num" && right.kind==="num"){
+                return num(left.value-right.value);
+            }
+            else if (left.kind==="num"){
+                if (left.value===0){
+                    return multiply(num(-1), right);
+                }
+            } 
+            else if (right.kind==="num"){
+                if (right.value===0){
+                    return left;
+                }
+            }
+            if (isSame(left,right)){
+                return num(0);
+            }
+            return add(left, multiply(num(-1),right));
+        }
+        case "multiply": {
+            const left = simplify(derivative.left);
+            const right = simplify(derivative.right);
+            if (left.kind==="num"&&right.kind==="num"){
+                return num(left.value*right.value);
+            }
+            else if (left.kind==="num"){
+                if (left.value===1){
+                    return right;
+                } 
+                else if (left.value===0){
+                    return num(0);
+                } 
+            } //TODO: Add rules for multiplication to simplify 2*x*2 probs need to also
+            else if (right.kind==="num"){
+                if (right.value===1){
+                    return left;
+                }
+                else if (right.value===0){
+                    return num(0);
+                } 
+                else if (right.value===-1){
+                    return multiply(num(-1),left);
+                }
+                return multiply(right, left);
+            }
+            return multiply(left, right);
+        }
+        case "divide": {
+            const left = simplify(derivative.left);
+            const right = simplify(derivative.right);
+            if (left.kind==="num"&&right.kind==="num"){
+                if (right.value===0){
+                    throw new Error("Division by zero");
+                }
+                if (left.value===right.value){
+                    return num(1);
+                }
+                else if (left.value===0){
+                    return num(0);
+                }
+                else if (right.value===1){
+                    return left;
+                }
+                else if (right.value===-1){
+                    return num(-left.value);
+                }
+                else if (left.value%right.value===0){
+                    return num(left.value/right.value);
+                }
+            }
+            else if (right.kind==="num"){
+                if (right.value===1){
+                    return left;
+                }
+                else if (right.value===0){
+                    throw new Error("Division by zero");
+                }
+                else if (right.value===-1){
+                    return multiply(num(-1),left);
+                }
+            }
+            else if (left.kind==="num"){
+                if (left.value===0){
+                    return num(0);
+                }
+            }
+            if (isSame(left,right)){
+                return num(1);
+            }
+            return divide(left,right);
+        }
+        case "exponent": {
+            const left=simplify(derivative.left);
+            const right=simplify(derivative.right);
+            if (left.kind==="num" && right.kind==="num"){
+                if (right.value>=0 && Number.isInteger(right.value)){
+                    return num(Math.pow(left.value, right.value));
+                }
+                else if (right.value==-1 && left.value!==0){
+                    return divide(num(1), left);
+                } 
+                else if (right.value<-1 && left.value!==0 && Number.isInteger(right.value)){
+                    return divide(num(1), num(Math.pow(left.value,-right.value)));
+                }
+            }
+            else if (right.kind==="num"){
+                if (right.value===1){
+                    return left;
+                }
+                else if (right.value===0){
+                    return num(1);
+                }
+                else if (right.value<0){
+                    return divide(num(1),exponent(left, num(-right.value)));
+                }
+            }
+            else if (left.kind==="num"){
+                if (left.value===1){
+                    return num(1);
+                }
+            }
+            return exponent(left,right);
+        }
+        case "negate": {
+            const arg =simplify(derivative.arg);
+            if (arg.kind==="num"){
+                return num(-arg.value);
+            }
+            return multiply(num(-1),arg);
+        }
+    }
+}
 
 button.addEventListener("click",main);
