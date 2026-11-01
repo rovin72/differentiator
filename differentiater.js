@@ -28,9 +28,32 @@ function main() {
         prevSimplified=simplified;
         simplified=simplify(collectTerms(simplified));
         iterations++
-    } while (!isSame(prevSimplified,simplified) && iterations<=maxIterations);
+    } while (!isSame(prevSimplified,simplified) && iterations<maxIterations);
     console.log(simplified);
+    if (iterations>=maxIterations){
+        console.error("simplifying took too long");
+    }
 
+}
+
+const funcTable=
+{
+    "sin": Math.sin,
+    "cos": Math.cos,
+    "tan": Math.tan,
+    "sec": (arg)=>1/Math.cos(arg),
+    "csc": (arg)=>1/Math.sin(arg),
+    "cot": (arg)=>1/Math.tan(arg),
+    "arcsin": Math.asin,
+    "arccos": Math.acos,
+    "arctan": Math.atan,
+    "ln": Math.log,
+    "log": Math.log10,
+    "sqrt": Math.sqrt
+}
+const constTable = {
+    "pi":Math.PI,
+    "e":Math.E
 }
 
 function tokenise(text){
@@ -582,6 +605,7 @@ function simplify(derivative){
 
 function collectTerms(expression){
     const plus=(term1, term2)=>num(term1.value+term2.value);
+    const collectExp=(oldPower,newPower)=>(simplify(collectTerms(add(oldPower,newPower))))
 
     function addTermToGroup(group, term, addingVal, operation=plus){
         let Added=false;
@@ -618,17 +642,22 @@ function collectTerms(expression){
                     case "num":
                         groupedAddends.set("nums", (groupedAddends.get("nums")||0)+addend.value);
                         break;
-                    case "multiply":
-                        if (addend.left.kind==="num"){
-                            addTermToGroup(groupedAddends, addend.right, addend.left);
+                    case "multiply":{
+                        const factors=flatten(addend, "multiply");
+                        const noncoeff=[];
+                        let coeff=1;
+                        for (let factor of factors){
+                            if (factor.kind==="num"){
+                                coeff*=factor.value;
+                            }
+                            else {
+                                noncoeff.push(factor);
+                            }
                         }
-                        else if (addend.right.kind==="num"){
-                            addTermToGroup(groupedAddends, addend.left, addend.right);
-                        } 
-                        else {
-                            addTermToGroup(groupedAddends, addend, num(1));
-                        }
+                        const term=unflatten(noncoeff, multiply)
+                        addTermToGroup(groupedAddends, term, num(coeff));
                         break;
+                    }
                     case "constant":
                     case "var":
                     case "function":
@@ -658,7 +687,7 @@ function collectTerms(expression){
             return unflatten(termList,add);
         }
 
-        case "multiply":
+        case "multiply": {
             const factors=flatten(expression, "multiply");
             const simplifiedFactors=[];
             for (let factor of factors){
@@ -671,15 +700,15 @@ function collectTerms(expression){
                         groupedFactors.set("nums", (groupedFactors.get("nums") ?? 1)*factor.value);
                         break;
                     case "exponent":
-                        addTermToGroup(groupedFactors, factor.left, factor.right, (oldPower,newPower)=>(simplify(collectTerms(add(oldPower,newPower)))));
+                        addTermToGroup(groupedFactors, factor.left, factor.right, collectExp);
                         break;
+                    case "var":
                     case "divide":
                     case "constant":
-                    case "var":
                     case "function":
                     case "add": 
                     default:
-                        addTermToGroup(groupedFactors, factor, num(1));
+                        addTermToGroup(groupedFactors, factor, num(1), collectExp);
                         break;
                 }
             }
@@ -702,6 +731,7 @@ function collectTerms(expression){
                 }
             }
             return unflatten(termList,multiply);
+        }
         case "divide":
             return divide(collectTerms(expression.left),collectTerms(expression.right));
         case "exponent":
@@ -736,6 +766,55 @@ function unflatten(expressionList, type){
         return expressionList[0];
     } else {
         return type(unflatten(expressionList.slice(0,-1),type),expressionList.slice(-1)[0]);
+    }
+}
+
+function evaluate(expression, substitutions={}){
+    switch (expression.kind) {
+        case "num":
+            return expression.value;
+        case "var":
+            if (expression.value in substitutions){
+                return substitutions[expression.value];
+            } 
+            else {
+                throw new Error("Var not substituted for");
+            }
+        case "constant":
+            return constTable[expression.value];
+        case "add": {
+            const left=evaluate(expression.left, substitutions);
+            const right=evaluate(expression.right, substitutions);
+            return left+right;
+        }
+        case "subtract":{
+            const left=evaluate(expression.left, substitutions);
+            const right=evaluate(expression.right, substitutions);
+            return left-right;
+        }
+        case "multiply":{
+            const left=evaluate(expression.left, substitutions);
+            const right=evaluate(expression.right, substitutions);
+            return left*right;
+        }
+        case "divide":{
+            const left=evaluate(expression.left, substitutions);
+            const right=evaluate(expression.right, substitutions);
+            return left/right;
+        }
+        case "exponent":{
+            const left=evaluate(expression.left, substitutions);
+            const right=evaluate(expression.right, substitutions);
+            return Math.pow(left,right);
+        }
+        case "negate":{
+            return -evaluate(expression.arg, substitutions);
+        }
+        case "function":{
+            return funcTable[expression.name](evaluate(expression.arg,substitutions));
+        }
+        default:
+            throw new Error("Unrecognised Type");
     }
 }
 
