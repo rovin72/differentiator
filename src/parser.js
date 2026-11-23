@@ -166,13 +166,11 @@ class TokenParser {
 
 export function parseText(text){
     const tokenisedText=tokenise(text);//
-    console.log(tokenisedText);
     const parser= new TokenParser(tokenisedText)
     const tree=parser.parseSum();
     if (parser.pos !== tokenisedText.length) {
         throw new Error("Unexpected tokens remaining after parsing");
     }
-    console.log(tree);
     return tree;
 }
 

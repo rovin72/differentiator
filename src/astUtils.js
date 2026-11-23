@@ -62,4 +62,25 @@ function varList(expression){
     }
 } //make return a set of unique variables instead of a list with duplicates
 
+export function printAST(expression){
+    switch (expression.kind) {
+        case "num":
+            return "num("+String(expression.value)+")";
+        case "constant":
+            return "constant("+expression.value+")";
+        case "var":
+            return "vari("+expression.value+")";
+        case "negate":
+            return "negate("+printAST(expression.arg)+")";
+        case "add":
+        case "subtract":
+        case "multiply":
+        case "divide":
+        case "exponent":
+            return expression.kind+"("+printAST(expression.left)+","+printAST(expression.right)+")";
+        case "function":
+            return "func("+expression.name+","+printAST(expression.arg)+")";
+    }
+}
+
 export {dependsOn, isSame, varList};

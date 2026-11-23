@@ -11,4 +11,4 @@ const exponent = (base, power) => ({kind: "exponent", left: base, right: power})
 const negate = (value) => ({kind: "negate", arg: value});
 const func = (type, arg) => ({kind: "function", name: type, arg:arg});
 
-export {num, constant, vari, op, add, subtract, multiply, divide, exponent, negate, func, dependsOn};
+export {num, constant, vari, op, add, subtract, multiply, divide, exponent, negate, func};
